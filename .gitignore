@@ -1,0 +1,8 @@
+validator.py.egg-info/
+docs/_build/
+build/
+htmlcov/
+dist/
+*.pyc
+*.pyo
+.coverage
