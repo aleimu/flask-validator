@@ -41,7 +41,7 @@
     # curl "http://127.0.0.1:5000/wrap" -d "a=1234&b=&c=nospam&d=13&e=123456&f=123&g=spa1&h=11%&i=12&j=bar&k=3a2&l=1abc&m=123a"
     {"code":500,"data":null,"err":{"a":["must be equal to '123'"],"b":["must be True-equivalent value"],"c":["must be one of ['spam', 'eggs', 'bacon']"],"d":["must not fall between 1 and 100"],"e":["must be at most 5 elements in length"],"l":["must be all letters"],"m":["must be all numbers"]}}
 
-## validator.py example
+## validator.py example copy
 
     from validator import Required, Not, Truthy, Blank, Range, Equals, In, validate
 
