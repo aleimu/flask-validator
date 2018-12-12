@@ -26,7 +26,7 @@ rules_example = {
 
 
 @app.route("/wrap", methods=["GET", "POST", "PUT"])
-@validator_wrap(rules=rules_example, strip=True)  # 姿势 1
+@validator_wrap(rules=rules_example, strip=True)  # 姿势 1:只能检测是否符合规则,不能修改参数,不符合就会直接返回json给调用者
 def wrap_example():
     a = request.values.get("a")
     b = request.values.get("b")
