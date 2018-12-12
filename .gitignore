@@ -6,3 +6,4 @@ dist/
 *.pyc
 *.pyo
 .coverage
+.idea

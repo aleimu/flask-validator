@@ -171,14 +171,17 @@ class Range(Validator):
 
     """
 
-    def __init__(self, start, end, reverse=True):
+    def __init__(self, start, end, reverse=True, auto=True):
         self.start = start
         self.end = end
         self.reverse = reverse
+        self.auto = auto
         self.err_message = "must fall between %s and %s" % (start, end)
         self.not_message = "must not fall between %s and %s" % (start, end)
 
     def __call__(self, value):
+        if self.auto:
+            value = float(value)
         if self.reverse:
             return self.start <= value <= self.end
         else:
@@ -203,13 +206,16 @@ class GreaterThan(Validator):
 
     """
 
-    def __init__(self, lower_bound, reverse=False):
+    def __init__(self, lower_bound, reverse=False, auto=True):
         self.lower_bound = lower_bound
         self.reverse = reverse
+        self.auto = auto
         self.err_message = "must be greater than %s" % lower_bound
         self.not_message = "must not be greater than %s" % lower_bound
 
     def __call__(self, value):
+        if self.auto:
+            value = float(value)
         if self.reverse:
             return self.lower_bound <= value
         else:
@@ -721,7 +727,10 @@ def validator_args(rules, strip=True, default=(False, None), diy_func=None, rele
             if release:
                 args_bak = args[:]
                 kwargs_bak = copy.deepcopy(kwargs)  # 下面流程异常时,是否直接使用 原参数传入f # fixme
-            args_template = f.func_code.co_varnames
+            try:
+                args_template = f.func_code.co_varnames
+            except:
+                args_template = f.__code__.co_varnames
             args_dict = OrderedDict()
             try:
                 for i, x in enumerate(args):
@@ -749,7 +758,7 @@ def validator_args(rules, strip=True, default=(False, None), diy_func=None, rele
                     if not result:
                         return False, err
             except Exception as e:
-                # print("verify_args catch err: ", traceback.format_exc())
+                print("verify_args catch err: ", traceback.format_exc())
                 if release:
                     return f(*args_bak, **kwargs_bak)
                 else:
@@ -806,7 +815,7 @@ def validator_func(rules, strip=True, default=(False, None), diy_func=None, rele
             if not result:
                 return False, err
     except Exception as e:
-        # print("verify_args catch err: ", traceback.format_exc())  # TODO
+        print("verify_args catch err: ", traceback.format_exc())  # TODO
         if release:
             return True, args_dict_copy
         else:
@@ -833,7 +842,7 @@ def validator_wrap(rules, strip=True, diy_func=None):
                 # strip
                 if strip:
                     for k in args_dict:
-                        if isstr(args_dict[k]):
+                        if args_dict[k] and isstr(args_dict[k]):
                             if args_dict[k][0] == " " or args_dict[k][-1] == " ":
                                 return jsonify({"code": 500, "data": None, "err": "%s should not contain spaces" % k})
                 # diy_func
@@ -848,7 +857,7 @@ def validator_wrap(rules, strip=True, diy_func=None):
                         return jsonify(
                             {"code": 500, "data": None, "err": err})
             except Exception as e:
-                # print("verify_args catch err: ", traceback.format_exc())
+                print("verify_args catch err: ", traceback.format_exc())
                 return jsonify({"code": 500, "data": None, "err": str(e)})
             return f(*args, **kwargs)
 

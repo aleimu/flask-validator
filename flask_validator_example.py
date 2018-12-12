@@ -17,7 +17,7 @@ rules_example = {
     "f": [Required, InstanceOf(str)],
     "g": [Required, Not(In(["spam", "eggs", "bacon"]))],
     "h": [Required, Pattern("\d\d\%")],
-    "i": [Required, GreaterThan(1, reverse=True)],
+    "i": [Required, GreaterThan(1, reverse=True, auto=True)],  # auto 自动转换成float类型来做比较
     "j": [lambda x: x == "bar"],
     "k": [Required, Isalnum()],
     "l": [Required, Isalpha()],
@@ -26,7 +26,7 @@ rules_example = {
 
 
 @app.route("/wrap", methods=["GET", "POST", "PUT"])
-@validator_wrap(rules=rules_example, strip=True)
+@validator_wrap(rules=rules_example, strip=True)  # 姿势 1
 def wrap_example():
     a = request.values.get("a")
     b = request.values.get("b")
@@ -50,7 +50,7 @@ def wrap_example():
 
 @app.route("/func", methods=["GET", "POST", "PUT"])
 def func_example():
-    result, request_args = validator_func(rules=rules_example, strip=True)
+    result, request_args = validator_func(rules=rules_example, strip=True)  # 姿势 2
     if not result:
         return jsonify({"code": 500, "data": None, "err": request_args})
     a = request_args.get("a")
@@ -73,7 +73,7 @@ def func_example():
         return jsonify({"code": 500, "data": None, "err": data})
 
 
-@validator_args(rules=rules_example, strip=True)
+@validator_args(rules=rules_example, strip=True)  # 姿势 3
 def todo(a, b, c, d, e, f, g, h, i, j, k, l, m):
     return True, {"a": a, "b": b, "c": c, "d": d, "e": e, "f": f, "g": g, "h": h, "i": i, "j": j, "k": k, "l": l,
                   "m": m}
@@ -103,27 +103,13 @@ if __name__ == "__main__":
   },                                                                                                                     
   "err": null                                                                                                            
 }            
+                                                                                        
+# curl "http://127.0.0.1:5000/wrap" -d "a=123&b=123&c=spam&d=123&e=1236&f=123&g=spa1&h=11%&i=12&j=bar&k=32&l=abc&m=123 "
+{"code":500,"data":null,"err":"m should not contain spaces"}
 
-# curl "http://127.0.0.1:6000/func" -d "a=123&b=123&c=spam&d=123&e=1236&f=123&g=spa1&h=11%&i=12&j=bar&k=32&l=abc&m=123"
-{
-  "code": 200,
-  "data": {
-    "a": "123",
-    "b": "123",
-    "c": "spam",
-    "d": "123",
-    "e": "1236",
-    "f": "123",
-    "g": "spa1",
-    "h": "11%",
-    "i": "12",
-    "j": "bar",
-    "k": "32",
-    "l": "abc",
-    "m": "123"
-  },
-  "err": null
-}
-                                                                                                            
-                                                                                                                         
+# curl "http://127.0.0.1:5000/wrap" -d "a=123&b=123&c=spam&d=13&e=1236&f=123&g=spa1&h=11%&i=12&j=bar&k=32&l=abc&m=123"
+{"code":500,"data":null,"err":{"d":["must not fall between 1 and 100"]}}
+
+# curl "http://127.0.0.1:5000/wrap" -d "a=1234&b=&c=nospam&d=13&e=123456&f=123&g=spa1&h=11%&i=12&j=bar&k=3a2&l=1abc&m=123a"
+{"code":500,"data":null,"err":{"a":["must be equal to '123'"],"b":["must be True-equivalent value"],"c":["must be one of ['spam', 'eggs', 'bacon']"],"d":["must not fall between 1 and 100"],"e":["must be at most 5 elements in length"],"l":["must be all letters"],"m":["must be all numbers"]}}                                                                                                             
 """
