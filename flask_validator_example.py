@@ -19,9 +19,9 @@ rules_example = {
     "h": [Required, Pattern("\d\d\%")],
     "i": [Required, GreaterThan(1, reverse=True, auto=True)],  # auto 自动转换成float类型来做比较
     "j": [lambda x: x == "bar"],
-    "k": [Required, Isalnum()],
-    "l": [Required, Isalpha()],
-    "m": [Required, Isdigit()],
+    "k": [Required, Isalnum()],  # 判断字符串中只能由字母和数字的组合，不能有特殊符号
+    "l": [Required, Isalpha()],  # 字符串里面都是字母，并且至少是一个字母，结果就为真，（汉字也可以）其他情况为假
+    "m": [Required, Isdigit()],  # 判断字符串是否全为数字
 }
 
 

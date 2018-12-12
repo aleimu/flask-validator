@@ -8,6 +8,7 @@
 ## 测试
 1. 我curl测试了一些,可能不完整,哈哈,要是担心的话,参考这里  https://github.com/mansam/validator.py/blob/master/tests/test_validator.py
 2. 支持python2和python3
+
 ## curl example
 
     # curl "http://127.0.0.1:6000/wrap" -d "a=123&b=123&c=spam&d=123&e=1236&f=123&g=spa1&h=11%&i=12&j=bar&k=32&l=abc&m=123"
@@ -40,7 +41,7 @@
     # curl "http://127.0.0.1:5000/wrap" -d "a=1234&b=&c=nospam&d=13&e=123456&f=123&g=spa1&h=11%&i=12&j=bar&k=3a2&l=1abc&m=123a"
     {"code":500,"data":null,"err":{"a":["must be equal to '123'"],"b":["must be True-equivalent value"],"c":["must be one of ['spam', 'eggs', 'bacon']"],"d":["must not fall between 1 and 100"],"e":["must be at most 5 elements in length"],"l":["must be all letters"],"m":["must be all numbers"]}}
 
-## example
+## validator.py example
 
     from validator import Required, Not, Truthy, Blank, Range, Equals, In, validate
 
