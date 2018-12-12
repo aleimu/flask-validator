@@ -73,7 +73,7 @@ def func_example():
         return jsonify({"code": 500, "data": None, "err": data})
 
 
-# @verify_args(rules=rules_index, strip=True)
+@validator_args(rules=rules_example, strip=True)
 def todo(a, b, c, d, e, f, g, h, i, j, k, l, m):
     return True, {"a": a, "b": b, "c": c, "d": d, "e": e, "f": f, "g": g, "h": h, "i": i, "j": j, "k": k, "l": l,
                   "m": m}

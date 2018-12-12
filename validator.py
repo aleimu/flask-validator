@@ -706,7 +706,7 @@ def _validate_list_helper(validation, dictionary, key, errors):
                     _validate_and_store_errs(v, dictionary, key, errors)
 
 
-def validator_func_wrap(rules, strip=True, default=(False, None), diy_func=None, release=False):
+def validator_args(rules, strip=True, default=(False, None), diy_func=None, release=False):
     """针对普通函数的参数校验的装饰器
     :param rules:参数的校验规则,map
     :param strip:对字段进行前后过滤空格
