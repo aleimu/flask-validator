@@ -18,6 +18,7 @@ import traceback
 from functools import wraps
 from collections import namedtuple, defaultdict, OrderedDict
 from abc import ABCMeta, abstractmethod
+from inspect import getargspec  # , getfullargspec , signature
 from flask import jsonify, request
 
 try:
@@ -713,7 +714,7 @@ def _validate_list_helper(validation, dictionary, key, errors):
 
 
 def validator_args(rules, strip=True, default=(False, None), diy_func=None, release=False):
-    """针对普通函数的参数校验的装饰器
+    """针对普通函数的参数校验的装饰器,传参不可以使用 tuple args 方式传参(即可变长参数方式传参)
     :param rules:参数的校验规则,map
     :param strip:对字段进行前后过滤空格
     :param default:将"" 装换成None
@@ -729,10 +730,14 @@ def validator_args(rules, strip=True, default=(False, None), diy_func=None, rele
                 kwargs_bak = copy.deepcopy(kwargs)  # 下面流程异常时,是否直接使用 原参数传入f # fixme
             try:
                 args_template = f.func_code.co_varnames
+                args_number = f.func_code.co_argcount
             except:
                 args_template = f.__code__.co_varnames
+                args_number = f.__code__.co_argcount
             args_dict = OrderedDict()
             try:
+                if args_number != len(args) + len(kwargs):
+                    raise Exception("args number error,not use tuple arg!")
                 for i, x in enumerate(args):
                     args_dict[args_template[i]] = x
                 sorted_kwargs = sort_by_co_varnames(args_template, kwargs)
@@ -768,6 +773,94 @@ def validator_args(rules, strip=True, default=(False, None), diy_func=None, rele
         return decorated_func
 
     return decorator
+
+
+def validator_arbitrary_args(rules, strip=True, default=(False, None), diy_func=None, release=False):
+    """针对普通函数的参数校验的装饰器 --- arbitrary argument lists(任意长参数)
+    :param rules:参数的校验规则,map
+    :param strip:对字段进行前后过滤空格
+    :param default:将"" 装换成None
+    :param diy_func:自定义的对某一参数的校验函数格式: {key:func},类似check, diy_func={"a": lambda x: x + "aa"})
+    :param release:发生参数校验异常后是否依然让参数进入主流程函数
+    """
+
+    def decorator(f):
+        @wraps(f)
+        def decorated_func(*args, **kwargs):
+            if release:
+                args_bak = args[:]
+                kwargs_bak = copy.deepcopy(kwargs)  # 下面流程异常时,是否直接使用 原参数传入f # fixme
+            try:
+                args_dict, kwargs_dict = arrange_args(args, kwargs, f)
+                # strip
+                if strip:
+                    for k in args_dict:
+                        if isstr(args_dict[k]):
+                            args_dict[k] = args_dict[k].strip()
+                    for k in kwargs_dict:
+                        if isstr(kwargs_dict[k]):
+                            kwargs_dict[k] = kwargs_dict[k].strip()
+                # default
+                if default[0]:
+                    for x in args_dict:
+                        if args_dict[x] == "":
+                            args_dict[x] = default[1]
+                    for x in kwargs_dict:
+                        if kwargs_dict[x] == "":
+                            kwargs_dict[x] = default[1]
+                # diy_func
+                if diy_func:
+                    for k in args_dict:
+                        if k in diy_func:
+                            args_dict[k] = diy_func[k](args_dict[k])
+                    for k in kwargs_dict:
+                        if k in diy_func:
+                            kwargs_dict[k] = diy_func[k](kwargs_dict[k])
+                # rules
+                if rules:
+                    args_dict_bak = copy.deepcopy(args_dict)
+                    args_dict_bak.update(kwargs_dict)
+                    result, err = validate(rules, args_dict_bak)
+                    if not result:
+                        return False, err
+            except Exception as e:
+                print("validator_arbitrary_args catch err: ", traceback.format_exc())
+                if release:
+                    return f(*args_bak, **kwargs_bak)
+                else:
+                    return False, str(e)
+            return f(*args_dict.values(), **kwargs_dict)
+
+        return decorated_func
+
+    return decorator
+
+
+def arrange_args(args, kwargs, f):
+    """
+    参数规整
+    :param args: 位置和可变长参数
+    :param kwargs: 字典参数
+    :param f: 函数
+    :return: 解析后的位置参数和字典参数
+    """
+    args_dict = OrderedDict()
+    kwargs_dict = OrderedDict()
+    args_template = getargspec(f)
+    kwargs_dict.update(kwargs)
+    # 多退少补
+    index_of_defaults = 0
+    index_of_args = 0
+    for i, k in enumerate(args_template.args):
+        try:
+            args_dict[k] = args[i]
+        except IndexError as e:
+            args_dict[k] = args_template.defaults[index_of_defaults]
+            index_of_defaults += 1
+        index_of_args += 1
+    if args_template.varargs:
+        args_dict[args_template.varargs] = args[index_of_args:]
+    return args_dict, kwargs_dict
 
 
 def sort_by_co_varnames(all_args, kwargs):
