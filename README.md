@@ -3,11 +3,14 @@
 1. 封装了 https://github.com/mansam/validator.py, 扩展了字符串校验,部分使用方法可以参考此处,考虑到代码比较少,可以直接copy
 2. validator_func 针对flask的request.json/requests.values的参数校验以及修改,修改的方式有限,可以自己控制
 3. validator_wrap 是针对flask route的装饰器,针对request.json/requests.values的参数校验,只是校验,当然校验的方式可以自己写扩展
-4. validator_args 针对普通函数的参数校验以及修改,注意不要使用python传参的高级特性(一个参数对应多个值),这个方法可以脱离flask使用,所以如果需要就直接copy过去吧.
+4. validator_args 针对普通函数的参数校验以及修改,注意不要使用python传参的高级特性(可变长参数),这个方法可以脱离flask使用,所以如果需要就直接copy过去吧.
+5. validator_arbitrary_args 针对包含可变长参数的函数的校验和修改,同样,这个方法也是可以脱离flask使用的,,所以如果需要就直接copy过去吧.
 
 ## 测试
 1. 我curl测试了一些,可能不完整,哈哈,要是担心的话,参考这里  https://github.com/mansam/validator.py/blob/master/tests/test_validator.py
-2. 支持python2和python3
+2. 具体的使用方法都写字了flask_validator_exampleXXX中了,可以参考一下.
+3. 支持python2和python3
+
 
 ## curl example
 
