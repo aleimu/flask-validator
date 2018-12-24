@@ -10,10 +10,11 @@ url: https://github.com/mansam/validator.py
 
 """
 __doc__ = "入参校验装饰器"
-__version__ = "1.2.6"
+__version__ = "1.2.7"
 
 import re
 import copy
+import datetime
 import traceback
 from functools import wraps
 from collections import namedtuple, defaultdict, OrderedDict
@@ -28,9 +29,27 @@ except ImportError:
     from urlparse import urlparse
 
 ValidationResult = namedtuple('ValidationResult', ['valid', 'errors'])
+# Taken from https://github.com/kvesteri/validators/blob/master/validators/email.py
+USER_REGEX = re.compile(
+    # dot-atom
+    r"(^[-!#$%&'*+/=?^_`{}|~0-9A-Z]+"
+    r"(\.[-!#$%&'*+/=?^_`{}|~0-9A-Z]+)*$"
+    # quoted-string
+    r'|^"([\001-\010\013\014\016-\037!#-\[\]-\177]|'
+    r"""\\[\001-\011\013\014\016-\177])*"$)""",
+    re.IGNORECASE
+)
+DOMAIN_REGEX = re.compile(
+    # domain
+    r'(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+'
+    r'(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?$)'
+    # literal form, ipv4 address (SMTP 4.1.3)
+    r'|^\[(25[0-5]|2[0-4]\d|[0-1]?\d?\d)'
+    r'(\.(25[0-5]|2[0-4]\d|[0-1]?\d?\d)){3}\]$',
+    re.IGNORECASE)
 
 
-def isstr(s):
+def is_str(s):
     """
     Python 2/3 compatible check to see
     if an object is a string type.
@@ -42,12 +61,12 @@ def isstr(s):
         return isinstance(s, str)
 
 
-def ChangeType(instance, new_type):
-    try:
-        instance = new_type(instance)
-        return instance
-    except Exception as e:
-        return False
+# def ChangeType(instance, new_type):
+#     try:
+#         instance = new_type(instance)
+#         return instance
+#     except Exception as e:
+#         return False
 
 
 class Validator(object):
@@ -76,7 +95,7 @@ class Isalnum(Validator):
         self.not_message = "must not be numbers and letters"
 
     def __call__(self, value):
-        if isstr(value):
+        if is_str(value):
             return value.isalnum()
         else:
             return False
@@ -90,7 +109,7 @@ class Isalpha(Validator):
         self.not_message = "must not be all letters"
 
     def __call__(self, value):
-        if isstr(value):
+        if is_str(value):
             # if isinstance(value, str) or isinstance(value, unicode):
             return value.isalpha()
         else:
@@ -105,10 +124,72 @@ class Isdigit(Validator):
         self.not_message = "must not be all numbers"
 
     def __call__(self, value):
-        if isstr(value):
+        if is_str(value):
             return value.isdigit()
         else:
             return False
+
+
+class Email(Validator):
+    """Verify that the value is an Email or not.
+    """
+
+    def __init__(self):
+        self.err_message = "Invalid Email"
+        self.not_message = "Invalid Email"
+
+    def __call__(self, value):
+        try:
+            if not value or "@" not in value:
+                return False
+            user_part, domain_part = value.rsplit('@', 1)
+            if not (USER_REGEX.match(user_part) and DOMAIN_REGEX.match(domain_part)):
+                return False
+            return True
+        except:
+            return False
+
+
+class Datetime(Validator):
+    """Validate that the value matches the datetime format."""
+
+    DEFAULT_FORMAT = '%Y-%m-%dT%H:%M:%S.%fZ'
+
+    def __init__(self, format=None):
+        self.format = format or self.DEFAULT_FORMAT
+        self.err_message = "Invalid Datetime format"
+        self.not_message = "Invalid Datetime format"
+
+    def __call__(self, v):
+        try:
+            datetime.datetime.strptime(v, self.format)
+        except (TypeError, ValueError):
+            return False
+        return True
+
+    def __repr__(self):
+        return 'Datetime(format=%s)' % self.format
+
+
+class Date(Validator):
+    """Validate that the value matches the date format."""
+
+    DEFAULT_FORMAT = '%Y-%m-%d'
+
+    def __init__(self, format=None):
+        self.format = format or self.DEFAULT_FORMAT
+        self.err_message = "Invalid Date format"
+        self.not_message = "Invalid Date format"
+
+    def __call__(self, v):
+        try:
+            datetime.datetime.strptime(v, self.format)
+        except (TypeError, ValueError):
+            return False
+        return True
+
+    def __repr__(self):
+        return 'Date(format=%s)' % self.format
 
 
 class In(Validator):
@@ -745,7 +826,7 @@ def validator_args(rules, strip=True, default=(False, None), diy_func=None, rele
                 # strip
                 if strip:
                     for k in args_dict:
-                        if isstr(args_dict[k]):
+                        if is_str(args_dict[k]):
                             args_dict[k] = args_dict[k].strip()
                 # default
                 if default[0]:
@@ -795,10 +876,10 @@ def validator_arbitrary_args(rules, strip=True, default=(False, None), diy_func=
                 # strip
                 if strip:
                     for k in args_dict:
-                        if isstr(args_dict[k]):
+                        if is_str(args_dict[k]):
                             args_dict[k] = args_dict[k].strip()
                     for k in kwargs_dict:
-                        if isstr(kwargs_dict[k]):
+                        if is_str(kwargs_dict[k]):
                             kwargs_dict[k] = kwargs_dict[k].strip()
                 # default
                 if default[0]:
@@ -890,7 +971,7 @@ def validator_func(rules, strip=True, default=(False, None), diy_func=None, rele
         # strip
         if strip:
             for k in args_dict:
-                if isstr(args_dict[k]):
+                if is_str(args_dict[k]):
                     args_dict[k] = args_dict[k].strip()
         # default
         if default[0]:
@@ -935,7 +1016,7 @@ def validator_wrap(rules, strip=True, diy_func=None):
                 # strip
                 if strip:
                     for k in args_dict:
-                        if args_dict[k] and isstr(args_dict[k]):
+                        if args_dict[k] and is_str(args_dict[k]):
                             if args_dict[k][0] == " " or args_dict[k][-1] == " ":
                                 return jsonify({"code": 500, "data": None, "err": "%s should not contain spaces" % k})
                 # diy_func
