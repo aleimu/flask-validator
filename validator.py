@@ -10,7 +10,7 @@ url: https://github.com/mansam/validator.py
 
 """
 __doc__ = "入参校验装饰器"
-__version__ = "1.2.7"
+__version__ = "1.2.8"
 
 import re
 import copy
@@ -21,6 +21,7 @@ from collections import namedtuple, defaultdict, OrderedDict
 from abc import ABCMeta, abstractmethod
 from inspect import getargspec  # , getfullargspec , signature
 from flask import jsonify, request
+from werkzeug.datastructures import MultiDict
 
 try:
     # python 3
@@ -56,9 +57,9 @@ def is_str(s):
     """
 
     try:
-        return isinstance(s, basestring)
-    except NameError:
         return isinstance(s, str)
+    except NameError:
+        return isinstance(s, basestring)
 
 
 # def ChangeType(instance, new_type):
@@ -794,69 +795,8 @@ def _validate_list_helper(validation, dictionary, key, errors):
                     _validate_and_store_errs(v, dictionary, key, errors)
 
 
-def validator_args(rules, strip=True, default=(False, None), diy_func=None, release=False):
-    """针对普通函数的参数校验的装饰器,传参不可以使用 tuple args 方式传参(即可变长参数方式传参)
-    :param rules:参数的校验规则,map
-    :param strip:对字段进行前后过滤空格
-    :param default:将"" 装换成None
-    :param diy_func:自定义的对某一参数的校验函数格式: {key:func},类似check, diy_func={"a": lambda x: x + "aa"})
-    :param release:发生参数校验异常后是否依然让参数进入主流程函数
-    """
-
-    def decorator(f):
-        @wraps(f)
-        def decorated_func(*args, **kwargs):
-            if release:
-                args_bak = args[:]
-                kwargs_bak = copy.deepcopy(kwargs)  # 下面流程异常时,是否直接使用 原参数传入f # fixme
-            try:
-                args_template = f.func_code.co_varnames
-                args_number = f.func_code.co_argcount
-            except:
-                args_template = f.__code__.co_varnames
-                args_number = f.__code__.co_argcount
-            args_dict = OrderedDict()
-            try:
-                if args_number != len(args) + len(kwargs):
-                    raise Exception("args number error,not use tuple arg!")
-                for i, x in enumerate(args):
-                    args_dict[args_template[i]] = x
-                sorted_kwargs = sort_by_co_varnames(args_template, kwargs)
-                args_dict.update(sorted_kwargs)
-                # strip
-                if strip:
-                    for k in args_dict:
-                        if is_str(args_dict[k]):
-                            args_dict[k] = args_dict[k].strip()
-                # default
-                if default[0]:
-                    for x in args_dict:
-                        if args_dict[x] == "":
-                            args_dict[x] = default[1]
-                # diy_func
-                if diy_func:
-                    for k in args_dict:
-                        if k in diy_func:
-                            args_dict[k] = diy_func[k](args_dict[k])
-                # rules
-                if rules:
-                    result, err = validate(rules, args_dict)
-                    if not result:
-                        return False, err
-            except Exception as e:
-                print("verify_args catch err: ", traceback.format_exc())
-                if release:
-                    return f(*args_bak, **kwargs_bak)
-                else:
-                    return False, str(e)
-            return f(*args_dict.values())
-
-        return decorated_func
-
-    return decorator
-
-
-def validator_arbitrary_args(rules, strip=True, default=(False, None), diy_func=None, release=False):
+# hook func
+def validator_func(rules, strip=True, default=(False, None), diy_func=None, release=False):
     """针对普通函数的参数校验的装饰器 --- arbitrary argument lists(任意长参数)
     :param rules:参数的校验规则,map
     :param strip:对字段进行前后过滤空格
@@ -875,28 +815,13 @@ def validator_arbitrary_args(rules, strip=True, default=(False, None), diy_func=
                 args_dict, kwargs_dict = arrange_args(args, kwargs, f)
                 # strip
                 if strip:
-                    for k in args_dict:
-                        if is_str(args_dict[k]):
-                            args_dict[k] = args_dict[k].strip()
-                    for k in kwargs_dict:
-                        if is_str(kwargs_dict[k]):
-                            kwargs_dict[k] = kwargs_dict[k].strip()
-                # default
-                if default[0]:
-                    for x in args_dict:
-                        if args_dict[x] == "":
-                            args_dict[x] = default[1]
-                    for x in kwargs_dict:
-                        if kwargs_dict[x] == "":
-                            kwargs_dict[x] = default[1]
+                    do_strip(args_dict, modify=True)
+                    do_strip(kwargs_dict, modify=True)
+                do_default(args_dict, default)
                 # diy_func
                 if diy_func:
-                    for k in args_dict:
-                        if k in diy_func:
-                            args_dict[k] = diy_func[k](args_dict[k])
-                    for k in kwargs_dict:
-                        if k in diy_func:
-                            kwargs_dict[k] = diy_func[k](kwargs_dict[k])
+                    do_func(args_dict, diy_func, modify=True)
+                    do_func(kwargs_dict, diy_func, modify=True)
                 # rules
                 if rules:
                     args_dict_bak = copy.deepcopy(args_dict)
@@ -915,6 +840,169 @@ def validator_arbitrary_args(rules, strip=True, default=(False, None), diy_func=
         return decorated_func
 
     return decorator
+
+
+def validator_sub(rules, strip=True, default=(False, None), diy_func=None, release=False):
+    """返回dict,代替request.values/request.json使用,这个方法比较low ...
+    :param rules:参数的校验规则,map
+    :param strip:对字段进行前后过滤空格
+    :param default:将"" 装换成None
+    :param diy_func:自定义的对某一参数的校验函数格式: {key:func},类似check, diy_func={"a": lambda x: x + "aa"})
+    :param release:发生参数校验异常后是否依然让参数进入主流程函数
+    """
+    args_dict = OrderedDict()
+    try:
+        if request.values:
+            args_dict.update(request.values)
+        if request.json:
+            args_dict.update(request.json)
+        if release:
+            args_dict_copy = copy.deepcopy(args_dict)  # 下面流程异常时,是否直接使用 原参数传入f # fixme
+        # strip
+        if strip:
+            do_strip(args_dict, modify=True)
+        # default
+        do_default(args_dict, default)
+        # diy_func
+        if diy_func:
+            do_func(args_dict, diy_func, modify=True)
+        # rules
+        if rules:
+            result, err = do_rules(args_dict, rules)
+            if not result:
+                return False, err
+    except Exception as e:
+        print("verify_args catch err: ", traceback.format_exc())  # TODO
+        if release:
+            return True, args_dict_copy
+        else:
+            return False, str(e)
+    return True, args_dict
+
+
+def validator(rules, strip=True, modify=True, default=(False, None), diy_func=[], **dict_args):
+    """装饰器版 - 检测是否符合规则,并修改参数
+    werkzeug.datastructures.ImmutableDict是最快的且不可变的
+    werkzeug.wrappers.BaseRequest中对parameter_storage_class的说明中说可使用可变结构(但不建议这样做),这里我们就
+    变更参数的存储方式为MultiDict,进一步实现对参数的校验以及修改,主要是默认值,参数校验,参数规范化操作
+    :param rules:参数的校验规则,map
+    :param strip:对字段进行前后空格检测
+    :param dict_args:检测范围,默认 json=False,args=Ture,form=False,values=False(values包括了args和form)
+    :param modify:对字段进行检测并修改,不再返回错误提示
+    :param default:将"" 装换成None
+    :param diy_func:自定义的对某一参数的校验函数格式: {key:func},类似check, diy_func={"a": lambda x: x=="aa"})
+    """
+
+    def decorator(f):
+        @wraps(f)
+        def decorated_func(*args, **kwargs):
+            # print("form:", request.form)  # 不可事先调用,不然会被缓存.........
+            request.parameter_storage_class = MultiDict  # 设置为可修改
+            try:
+                result, err = limits(dict_args, strip, modify, default, diy_func, rules)
+                if not result:
+                    return jsonify({"code": 500, "data": None, "err": err})
+            except Exception as e:
+                print("verify_args catch err: ", traceback.format_exc())
+                return jsonify({"code": 500, "data": None, "err": str(e)})
+            return f(*args, **kwargs)
+
+        return decorated_func
+
+    return decorator
+
+
+def limits(dict_args, strip, modify, default, diy_func, rules):
+    if dict_args.get("json", False):
+        result, err = check(request.json, strip, modify, default, diy_func, rules)
+        if not result:
+            return result, err
+    if dict_args.get("args", True) or dict_args.get("values", False):
+        result, err = check(request.args, strip, modify, default, diy_func, rules)
+        if not result:
+            return result, err
+    if dict_args.get("form", False) or dict_args.get("values", False):
+        result, err = check(request.form, strip, modify, default, diy_func, rules)
+        if not result:
+            return result, err
+    return True, None
+
+
+def check(data, strip, modify, default, diy_func, rules):
+    if strip:
+        result, err = do_strip(data, modify=modify)
+        if not result:
+            return result, err
+    if diy_func:
+        do_func(data, diy_func, modify=modify)
+    if rules:
+        result, err = do_rules(data, rules)
+        if not result:
+            return result, err
+    do_default(data, default)
+    return True, None
+
+
+def do_default(args_dict, default):
+    """
+    入参时写入到数据库不好看,转换成None
+    :param args_dict:
+    :param default:
+    :return:
+    """
+    if default[0]:
+        for x in args_dict:
+            if args_dict[x] == "":
+                args_dict[x] = default[1]
+
+
+def do_rules(args_dict, rules):
+    """
+    参数校验的核心
+    :param args_dict:
+    :param rules:
+    :return:
+    """
+    if not args_dict:
+        return True, None
+    result, err = validate(rules, args_dict)
+    return result, err
+
+
+def do_func(args_dict, diy_func, modify=True):
+    """
+    执行自定义函数,一般用来修正某些入参
+    :param args_dict:
+    :param diy_func:
+    :param modify:
+    :return:
+    """
+    if not args_dict:
+        return True, None
+    if modify:
+        for k in args_dict:
+            if k in diy_func:
+                args_dict[k] = diy_func[k](args_dict[k])
+
+
+def do_strip(args_dict, modify=True):
+    """
+    检测字符串前后空格,modify=True就自动剔除前后空格,否则就检测并报错
+    :param args_dict:
+    :param modify:
+    :return:
+    """
+    if modify:
+        for k in args_dict:
+            if args_dict[k] and is_str(args_dict[k]):
+                if args_dict[k][0] == " " or args_dict[k][-1] == " ":
+                    args_dict[k] = args_dict[k].strip()
+    else:
+        for k in args_dict:
+            if args_dict[k] and is_str(args_dict[k]):
+                if args_dict[k][0] == " " or args_dict[k][-1] == " ":
+                    return False, "%s should not contain spaces" % k
+    return True, None
 
 
 def arrange_args(args, kwargs, f):
@@ -942,99 +1030,3 @@ def arrange_args(args, kwargs, f):
     if args_template.varargs:
         args_dict[args_template.varargs] = args[index_of_args:]
     return args_dict, kwargs_dict
-
-
-def sort_by_co_varnames(all_args, kwargs):
-    new_ordered = OrderedDict()
-    for x in all_args:
-        if x in kwargs:
-            new_ordered[x] = kwargs[x]
-    return new_ordered
-
-
-def validator_func(rules, strip=True, default=(False, None), diy_func=None, release=False):
-    """函数版-返回dict,代替request.values/request.json
-    :param rules:参数的校验规则,map
-    :param strip:对字段进行前后过滤空格
-    :param default:将"" 装换成None
-    :param diy_func:自定义的对某一参数的校验函数格式: {key:func},类似check, diy_func={"a": lambda x: x + "aa"})
-    :param release:发生参数校验异常后是否依然让参数进入主流程函数
-    """
-    args_dict = OrderedDict()
-    try:
-        if request.values:
-            args_dict.update(request.values)
-        if request.json:
-            args_dict.update(request.json)
-        if release:
-            args_dict_copy = copy.deepcopy(args_dict)  # 下面流程异常时,是否直接使用 原参数传入f # fixme
-        # strip
-        if strip:
-            for k in args_dict:
-                if is_str(args_dict[k]):
-                    args_dict[k] = args_dict[k].strip()
-        # default
-        if default[0]:
-            for x in args_dict:
-                if args_dict[x] == "":
-                    args_dict[x] = default[1]
-        # diy_func
-        if diy_func:
-            for k in args_dict:
-                if k in diy_func:
-                    args_dict[k] = diy_func[k](args_dict[k])
-        # rules
-        if rules:
-            result, err = validate(rules, args_dict)
-            if not result:
-                return False, err
-    except Exception as e:
-        print("verify_args catch err: ", traceback.format_exc())  # TODO
-        if release:
-            return True, args_dict_copy
-        else:
-            return False, str(e)
-    return True, args_dict
-
-
-def validator_wrap(rules, strip=True, diy_func=None):
-    """装饰器版 - 只能检测是否符合规则,不能修改参数
-    :param rules:参数的校验规则,map
-    :param strip:对字段进行前后空格检测
-    :param diy_func:自定义的对某一参数的校验函数格式: {key:func},类似check, diy_func={"a": lambda x: x=="aa"})
-    """
-
-    def decorator(f):
-        @wraps(f)
-        def decorated_func(*args, **kwargs):
-            try:
-                args_dict = OrderedDict()
-                if request.values:
-                    args_dict.update(request.values)
-                if request.json:
-                    args_dict.update(request.json)
-                # strip
-                if strip:
-                    for k in args_dict:
-                        if args_dict[k] and is_str(args_dict[k]):
-                            if args_dict[k][0] == " " or args_dict[k][-1] == " ":
-                                return jsonify({"code": 500, "data": None, "err": "%s should not contain spaces" % k})
-                # diy_func
-                if diy_func:
-                    for k in args_dict:
-                        if k in diy_func:
-                            args_dict[k] = diy_func[k](args_dict[k])
-                # rules
-                if rules:
-                    result, err = validate(rules, args_dict)
-                    if not result:
-                        return jsonify(
-                            {"code": 500, "data": None, "err": err})
-            except Exception as e:
-                print("verify_args catch err: ", traceback.format_exc())
-                return jsonify({"code": 500, "data": None, "err": str(e)})
-            return f(*args, **kwargs)
-
-        return decorated_func
-
-    return decorator
